@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -39,6 +40,21 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+
+        # -- multi-head critic support --
+        self.reward_components = sum(
+            isinstance(getattr(self.rewards, attr), RewTerm)
+            for attr in dir(self.rewards)
+            if not attr.startswith("__")
+        )
+        self.reward_component_names = [
+            attr for attr in dir(self.rewards)
+            if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
+        ]
+        # task rewards: velocity tracking and feet air time
+        self.reward_component_task_rew = [
+            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "feet_air_time",
+        ]
 
 
 class G1FlatEnvCfg_PLAY(G1FlatEnvCfg):

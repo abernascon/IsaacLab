@@ -156,6 +156,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"Exact experiment name requested from command line: {log_dir}")
     if agent_cfg.run_name:
         log_dir += f"_{agent_cfg.run_name}"
+    # Append GCR-PPO variant tag
+    use_critic_multi = getattr(args_cli, "use_critic_multi", False)
+    use_pcgrad = getattr(args_cli, "use_pcgrad", False)
+    if use_critic_multi and use_pcgrad:
+        log_dir += "_GCR-PPO"
+    elif use_critic_multi:
+        log_dir += "_multihead"
+    else:
+        log_dir += "_baseline"
     log_dir = os.path.join(log_root_path, log_dir)
 
     # set the IO descriptors export flag if requested
@@ -197,11 +206,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
+    # convert agent cfg to dict and inject multi-head / PCGrad flags
+    agent_cfg_dict = agent_cfg.to_dict()
+    agent_cfg_dict["use_critic_multi"] = getattr(args_cli, "use_critic_multi", False)
+    agent_cfg_dict["use_pcgrad"] = getattr(args_cli, "use_pcgrad", False)
+
     # create runner from rsl-rl
     if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = OnPolicyRunner(env, agent_cfg_dict, log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = DistillationRunner(env, agent_cfg_dict, log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs

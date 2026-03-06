@@ -37,6 +37,15 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     arg_group.add_argument(
         "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
     )
+    # -- multi-head critic / PCGrad arguments
+    arg_group.add_argument(
+        "--use_critic_multi", action="store_true", default=False,
+        help="Use multi-head critic with per-reward-component value heads.",
+    )
+    arg_group.add_argument(
+        "--use_pcgrad", action="store_true", default=False,
+        help="Use PCGrad gradient projection to resolve conflicting reward gradients.",
+    )
 
 
 def parse_rsl_rl_cfg(task_name: str, args_cli: argparse.Namespace) -> RslRlBaseRunnerCfg:

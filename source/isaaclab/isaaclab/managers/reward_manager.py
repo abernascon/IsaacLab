@@ -59,8 +59,13 @@ class RewardManager(ManagerBase):
         self._episode_sums = dict()
         for term_name in self._term_names:
             self._episode_sums[term_name] = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+
+        # number of reward components (for multi-head critic support)
+        self.reward_components = len(self._term_names)
+
         # create buffer for managing reward per environment
-        self._reward_buf = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        # Shape: (num_envs, reward_components) to support per-component reward decomposition
+        self._reward_buf = torch.zeros(self.num_envs, self.reward_components, dtype=torch.float, device=self.device)
 
         # Buffer which stores the current step reward for each term for each environment
         self._step_reward = torch.zeros((self.num_envs, len(self._term_names)), dtype=torch.float, device=self.device)
@@ -127,16 +132,17 @@ class RewardManager(ManagerBase):
         return extras
 
     def compute(self, dt: float) -> torch.Tensor:
-        """Computes the reward signal as a weighted sum of individual terms.
+        """Computes the reward signal as per-component values.
 
-        This function calls each reward term managed by the class and adds them to compute the net
-        reward signal. It also updates the episodic sums corresponding to individual reward terms.
+        This function calls each reward term managed by the class and stores them in the
+        per-component reward buffer. It also updates the episodic sums corresponding to
+        individual reward terms.
 
         Args:
             dt: The time-step interval of the environment.
 
         Returns:
-            The net reward signal of shape (num_envs,).
+            The per-component reward signal of shape (num_envs, reward_components).
         """
         # reset computation
         self._reward_buf[:] = 0.0
@@ -148,8 +154,8 @@ class RewardManager(ManagerBase):
                 continue
             # compute term's value
             value = term_cfg.func(self._env, **term_cfg.params) * term_cfg.weight * dt
-            # update total reward
-            self._reward_buf += value
+            # update per-component reward
+            self._reward_buf[:, term_idx] += value
             # update episodic sum
             self._episode_sums[name] += value
 
