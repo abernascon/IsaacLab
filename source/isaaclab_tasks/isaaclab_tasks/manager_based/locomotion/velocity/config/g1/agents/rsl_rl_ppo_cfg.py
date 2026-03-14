@@ -54,11 +54,6 @@ class G1LowHeightPPORunnerCfg(G1FlatPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 3000
+        self.max_iterations = 1500
         self.experiment_name = "g1_low_height"
 
-        # The flat config shrinks dims to [256, 128, 128]. For multi-head critic
-        # (~15 output heads instead of 1) we restore the rough config's larger
-        # trunk so each head gets enough representational capacity.
-        self.policy.actor_hidden_dims = [512, 256, 128]
-        self.policy.critic_hidden_dims = [512, 256, 128]

@@ -4,4 +4,4 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from .height_command import UniformHeightCommand, UniformHeightCommandCfg
-from .rewards import track_height_l2
+from .rewards import track_height_l2, track_height_rbf
