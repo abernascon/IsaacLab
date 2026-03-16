@@ -61,3 +61,25 @@ def track_height_rbf(
     height_error = asset.data.root_pos_w[:, 2] - target_height
     # Gaussian RBF: exp(-distance^2 / (2*sigma^2))
     return torch.exp(-torch.square(height_error) / (2.0 * sigma**2))
+
+
+def flat_feet_orientation(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize non-flat feet orientation.
+
+    This function penalizes the deviation of the feet orientation from the flat orientation (z-up).
+    It computes the sum of squares of the x and y components of the projected Z-axis,
+    which corresponds to the non-yaw components of the rotation.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # Get feet orientation
+    feet_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids, :]  # (num_envs, num_feet, 4)
+
+    # Penalize x and y components of the quaternion (w, x, y, z)
+    # This assumes the target orientation is z-up (flat), allowing for yaw rotation.
+    # A rotation purely around Z-axis has x=0 and y=0.
+    return torch.sum(torch.square(feet_quat_w[:, :, 1:3]), dim=-1).sum(dim=1)

@@ -9,7 +9,7 @@ from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
-from .mdp import UniformHeightCommandCfg, track_height_l2, track_height_rbf
+from .mdp import UniformHeightCommandCfg, track_height_l2, track_height_rbf, flat_feet_orientation
 
 
 @configclass
@@ -30,7 +30,7 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
         self.commands.target_height = UniformHeightCommandCfg(
             asset_name="robot",
             resampling_time_range=(20.0, 20.0),
-            ranges=UniformHeightCommandCfg.Ranges(height=(0.45, 0.55)),
+            ranges=UniformHeightCommandCfg.Ranges(height=(0.45, 0.45)),
         )
 
         # Add height-tracking reward using RBF kernel 
@@ -46,6 +46,15 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
         
         # Add survival reward 
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
+        
+        # Penalize foot tilting
+        self.rewards.flat_feet_orientation = RewTerm(
+            func=flat_feet_orientation,
+            weight=-2.0,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+            },
+        )
 
         # Update multi-head critic fields to include the new reward
         self.reward_components = sum(
