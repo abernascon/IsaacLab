@@ -88,6 +88,7 @@ services:
     profiles: [ "base" ]
     env_file: .env.base
     build:
+      network: host
       context: ../
       dockerfile: docker/Dockerfile.base
       args:

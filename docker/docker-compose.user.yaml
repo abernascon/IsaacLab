@@ -1,0 +1,15 @@
+services:
+  isaac-lab-user:
+    image: isaac-lab-user
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.user
+      network: host
+      args:
+        ISAACLAB_IMAGE_ARG: isaac-lab-base
+    extends:
+      file: docker-compose.yaml
+      service: isaac-lab-base
+    container_name: isaac-lab-user
+    profiles:
+      - user

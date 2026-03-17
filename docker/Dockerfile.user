@@ -1,0 +1,9 @@
+ARG ISAACLAB_IMAGE_ARG
+FROM ${ISAACLAB_IMAGE_ARG}
+
+# Copy RSL-RL from build context to container
+COPY source/rsl_rl ${ISAACLAB_PATH}/source/rsl_rl
+
+# Install RSL-RL in editable mode
+# Note: we use the python script provided by Isaac Sim/Lab to ensure we use the correct pip
+RUN ${ISAACLAB_PATH}/isaaclab.sh -p -m pip install -e ${ISAACLAB_PATH}/source/rsl_rl

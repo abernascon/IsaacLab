@@ -20,7 +20,7 @@ cat <<EOT > job.sh
 module load eth_proxy
 
 # Pass the container profile first to run_singularity.sh, then all arguments intended for the executed script
-bash "$1/docker/cluster/run_singularity.sh" "$1" "$2" ${@:3}
+bash "$1/docker/cluster/run_singularity.sh" "$1" "$2" "${@:3}"
 EOT
 
 sbatch < job.sh
