@@ -57,3 +57,12 @@ class G1LowHeightPPORunnerCfg(G1FlatPPORunnerCfg):
         self.max_iterations = 1500
         self.experiment_name = "g1_low_height"
 
+
+@configclass
+class G1WaiterPPORunnerCfg(G1FlatPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.max_iterations = 2000
+        self.experiment_name = "g1_waiter"
+
