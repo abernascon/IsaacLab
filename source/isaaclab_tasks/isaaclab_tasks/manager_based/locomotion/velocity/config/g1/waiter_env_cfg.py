@@ -46,7 +46,6 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # Enable self-collisions so the arm can't clip through the torso
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
 
         # ------------------------------------------------------------------
@@ -106,6 +105,18 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
                         ".*_elbow_pitch_joint",
                         ".*_elbow_roll_joint",
                     ],
+                ),
+            },
+        )
+
+        # Penalize shoulder roll deviation more strongly to prevent arm closing into torso
+        self.rewards.joint_deviation_shoulder = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=-0.5,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[".*_shoulder_roll_joint"],
                 ),
             },
         )
