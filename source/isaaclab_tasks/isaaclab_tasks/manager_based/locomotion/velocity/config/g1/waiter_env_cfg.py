@@ -11,7 +11,7 @@ from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
-from .mdp import plate_orientation_rbf, plate_drop_penalty
+from .mdp import plate_orientation_rbf  # , plate_drop_penalty
 
 
 @configclass
@@ -46,6 +46,9 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # Enable self-collisions so the arm can't clip through the torso
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+
         # ------------------------------------------------------------------
         # Scene: plate as a compound shape on the palm link
         # ------------------------------------------------------------------
@@ -64,7 +67,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
                 height=0.01,
                 rigid_props=None,          # no separate rigid body → merged with palm
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.4),
-                collision_props=None,      # disable to avoid self-collision artefacts
+                collision_props=sim_utils.CollisionPropertiesCfg(),  # enabled: prevents arm compenetrating body
                 visual_material=sim_utils.PreviewSurfaceCfg(
                     diffuse_color=(0.95, 0.93, 0.88),  # off-white / ceramic
                     metallic=0.0,
@@ -78,59 +81,59 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             #   90° around Z      (0.707, 0.000, 0.000, 0.707)  palm X  = plate normal
             # Also update PLATE_LOCAL_ROT below to match whichever you pick.
             init_state=AssetBaseCfg.InitialStateCfg(
-                pos=(0.1, 0.0, 0.0),
-                rot=(0.707, -0.707, 0.0, 0.0),  # -90° around X: palm +Y = plate normal (flat when palm faces up)
+                pos=(0.1, 0.05, 0.0),           # offset along palm +Y (the "up" axis in waiter pose)
+                rot=(0.707, -0.707, 0.0, 0.0),  # -90° around X: cylinder flat face ⊥ palm +Y
             ),
         )
-
-        # ------------------------------------------------------------------
-        # Right arm waiter pose initialisation
-        # ------------------------------------------------------------------
-        # The base G1 config has ".*_elbow_pitch_joint": 0.87 (wildcard).
-        # Adding "right_elbow_pitch_joint" on top would create a double-match.
-        # Fix: remove the wildcard and set left/right explicitly.
-        self.scene.robot.init_state.joint_pos.pop(".*_elbow_pitch_joint", None)
-        self.scene.robot.init_state.joint_pos.update({
-            "right_shoulder_pitch_joint": 0.35,   # standard natural pose
-            "right_shoulder_roll_joint": -0.16,   # standard natural pose
-            "right_shoulder_yaw_joint": 0.0,
-            "left_elbow_pitch_joint": 0.87,       # keep left at default
-            "right_elbow_pitch_joint": 0.0,      
-            "right_elbow_roll_joint": 1.57,       # supinate forearm → palm faces up
-        })
-
         # ------------------------------------------------------------------
         # Rewards
         # ------------------------------------------------------------------
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
 
-        # PLATE_LOCAL_ROT defines which palm axis is the plate surface normal.
-        # In the standard G1 pose, palm Y points world +Y. In the waiter pose (palm up),
-        # palm Y should point world +Z. So we track palm +Y = world +Z.
-        # Rx(-90°) * [0,0,1] = [0,+1,0] → reward checks R(q_palm)*[0,1,0] = world +z.
-        PLATE_LOCAL_ROT = (0.707, -0.707, 0.0, 0.0)  # -90° around X: track palm +Y pointing world +z
+        # Extend joint position limits penalty to arm joints
+        self.rewards.dof_pos_limits = RewTerm(
+            func=mdp.joint_pos_limits,
+            weight=-1.0,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        ".*_ankle_pitch_joint",
+                        ".*_ankle_roll_joint",
+                        ".*_shoulder_pitch_joint",
+                        ".*_shoulder_roll_joint",
+                        ".*_shoulder_yaw_joint",
+                        ".*_elbow_pitch_joint",
+                        ".*_elbow_roll_joint",
+                    ],
+                ),
+            },
+        )
 
-        # RBF reward: plate z-axis (after local rotation) aligned with world +z
+        # palm +Y points world +Z when the palm faces up (waiter pose).
+        PALM_UP_LOCAL = (0.0, 1.0, 0.0)
+
+        # RBF reward: palm +Y aligned with world +z (plate flat)
         self.rewards.plate_orientation_rbf = RewTerm(
             func=plate_orientation_rbf,
-            weight=3.0,
+            weight=2.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "sigma": 0.2,
-                "plate_local_rot": PLATE_LOCAL_ROT,
+                "sigma": 0.5,
+                "palm_up_local": PALM_UP_LOCAL,
             },
         )
 
-        # Large penalty when plate tilts more than 30° (plate "drops")
-        self.rewards.plate_drop_penalty = RewTerm(
-            func=plate_drop_penalty,
-            weight=-10.0,
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "max_tilt_angle": 0.5236,  # 30 degrees
-                "plate_local_rot": PLATE_LOCAL_ROT,
-            },
-        )
+        # # Large penalty when plate tilts more than 45°
+        # self.rewards.plate_drop_penalty = RewTerm(
+        #     func=plate_drop_penalty,
+        #     weight=-2.0,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
+        #         "max_tilt_angle": 0.7854,  # 45 degrees
+        #         "palm_up_local": PALM_UP_LOCAL,
+        #     },
+        # )
 
         # ------------------------------------------------------------------
         # Multi-head critic bookkeeping (GCR-PPO)
@@ -144,7 +147,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_rbf", "alive", "plate_drop_penalty"]
+        self.reward_component_task_rew = ["plate_orientation_rbf", "alive", "dof_pos_limits"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):

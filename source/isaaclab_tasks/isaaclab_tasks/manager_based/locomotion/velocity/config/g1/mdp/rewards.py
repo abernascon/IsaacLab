@@ -87,52 +87,48 @@ def flat_feet_orientation(
     return torch.sum(torch.square(feet_quat_w[:, :, 1:3]), dim=-1).sum(dim=1)
 
 
-def _plate_tilt_sq(
+def _palm_tilt_sq(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
-    plate_local_rot: tuple,
+    palm_up_local: tuple = (0.0, 1.0, 0.0),
 ) -> torch.Tensor:
-    """Compute tilt² of the plate's z-axis from world +z.
+    """Directional tilt of the palm's local up-axis from world +Z.
 
-    The plate is mounted on the palm with a fixed local rotation ``plate_local_rot``
-    (quaternion w,x,y,z relative to the palm frame).  The true plate orientation is:
-        q_plate = q_palm ⊗ q_local
-    and tilt is measured as x²+y² of q_plate (zero when plate z = world z).
+    Rotates ``palm_up_local`` into world frame and returns (1 - z) / 2,
+    which is 0 when the axis points straight up and 1 when pointing straight down.
+    Unlike x²+y², this is NOT symmetric: palm-down and palm-up give different values.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     palm_quat = asset.data.body_quat_w[:, asset_cfg.body_ids[0], :]  # (N, 4)
 
-    q_local = torch.tensor(plate_local_rot, dtype=torch.float32, device=palm_quat.device)
-    q_local = q_local.unsqueeze(0).expand(palm_quat.shape[0], -1)   # (N, 4)
+    up_local = torch.tensor(palm_up_local, dtype=torch.float32, device=palm_quat.device)
+    up_local = up_local.unsqueeze(0).expand(palm_quat.shape[0], -1)  # (N, 3)
 
-    plate_quat = math_utils.quat_mul(palm_quat, q_local)             # (N, 4)
-    # x²+y² of the plate quaternion = 0 when plate z-axis points world +z
-    return torch.square(plate_quat[:, 1]) + torch.square(plate_quat[:, 2])  # (N,)
+    up_world = math_utils.quat_apply(palm_quat, up_local)             # (N, 3)
+    return (1.0 - up_world[:, 2]) / 2.0                               # (N,) in [0, 1]
 
 
 def plate_orientation_rbf(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     sigma: float = 0.2,
-    plate_local_rot: tuple = (1.0, 0.0, 0.0, 0.0),
+    palm_up_local: tuple = (0.0, 1.0, 0.0),
 ) -> torch.Tensor:
-    """Reward keeping the plate horizontal.
+    """Reward keeping the plate horizontal via an RBF kernel.
 
-    Computes the true plate orientation as q_palm ⊗ q_local (where ``plate_local_rot``
-    is the plate's rotation relative to the palm body frame), then rewards alignment
-    of the plate z-axis with world +z via an RBF kernel.
+    Checks that the palm's local up-axis (``palm_up_local``) points world +z.
+    Since the plate is fixed to the palm, this directly measures plate tilt.
 
     Args:
         env: The RL environment.
         asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
-        sigma: RBF decay width in radians.
-        plate_local_rot: Quaternion (w,x,y,z) of the plate relative to the palm frame.
-                         Must match the ``rot`` set in the plate's ``init_state``.
+        sigma: RBF decay width (in sin-space). Smaller = steeper penalty for tilt.
+        palm_up_local: Palm-frame unit vector that should point world +z when tray is flat.
 
     Returns:
         Per-environment RBF reward in [0, 1], shape ``(num_envs,)``.
     """
-    tilt_sq = _plate_tilt_sq(env, asset_cfg, plate_local_rot)
+    tilt_sq = _palm_tilt_sq(env, asset_cfg, palm_up_local)
     return torch.exp(-tilt_sq / (2.0 * sigma**2))
 
 
@@ -140,7 +136,7 @@ def plate_drop_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     max_tilt_angle: float = 0.5236,
-    plate_local_rot: tuple = (1.0, 0.0, 0.0, 0.0),
+    palm_up_local: tuple = (0.0, 1.0, 0.0),
 ) -> torch.Tensor:
     """Binary penalty when the plate tilts past ``max_tilt_angle`` from horizontal.
 
@@ -148,12 +144,11 @@ def plate_drop_penalty(
         env: The RL environment.
         asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
         max_tilt_angle: Tilt threshold in radians (default 30°).
-        plate_local_rot: Quaternion (w,x,y,z) of the plate relative to the palm frame.
-                         Must match the ``rot`` set in the plate's ``init_state``.
+        palm_up_local: Palm-frame unit vector that should point world +z when tray is flat.
 
     Returns:
         Per-environment binary penalty (0 or 1), shape ``(num_envs,)``.
     """
-    tilt_sq = _plate_tilt_sq(env, asset_cfg, plate_local_rot)
+    tilt_sq = _palm_tilt_sq(env, asset_cfg, palm_up_local)
     threshold = math.sin(max_tilt_angle / 2.0) ** 2
     return (tilt_sq > threshold).float()
