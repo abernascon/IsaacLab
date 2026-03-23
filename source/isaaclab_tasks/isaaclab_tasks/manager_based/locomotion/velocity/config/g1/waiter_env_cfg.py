@@ -11,7 +11,7 @@ from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
-from .mdp import plate_orientation_rbf  # , plate_drop_penalty
+from .mdp import plate_orientation_exp, palm_lin_vel_penalty  # , plate_drop_penalty
 
 
 @configclass
@@ -34,7 +34,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
 
     Rewards added vs. flat env:
         - ``alive``:               survival reward
-        - ``plate_orientation_rbf``: keep palm z-axis pointing world-up (plate flat)
+        - ``plate_orientation_exp``: keep palm z-axis pointing world-up (plate flat)
         - ``plate_drop_penalty``:  large penalty when tilt > 30°
 
     Arm initialisation:
@@ -84,10 +84,23 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
                 rot=(0.707, -0.707, 0.0, 0.0),  # -90° around X: cylinder flat face ⊥ palm +Y
             ),
         )
+
         # ------------------------------------------------------------------
         # Rewards
         # ------------------------------------------------------------------
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
+
+        # Reduce feet_air_time weight to prevent GCR-PPO from exploiting
+        # single-stance balancing (inherited weight=0.25 is too high)
+        self.rewards.feet_air_time = RewTerm(
+            func=mdp.feet_air_time_positive_biped,
+            weight=0.1,
+            params={
+                "command_name": "base_velocity",
+                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
+                "threshold": 0.4,
+            },
+        )
 
         # Extend joint position limits penalty to arm joints
         self.rewards.dof_pos_limits = RewTerm(
@@ -124,27 +137,26 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # palm +Y points world +Z when the palm faces up (waiter pose).
         PALM_UP_LOCAL = (0.0, 1.0, 0.0)
 
-        # RBF reward: palm +Y aligned with world +z (plate flat)
-        self.rewards.plate_orientation_rbf = RewTerm(
-            func=plate_orientation_rbf,
+        # Power-law reward: palm +Y aligned with world +z (plate flat)
+        self.rewards.plate_orientation_exp = RewTerm(
+            func=plate_orientation_exp,
             weight=2.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "sigma": 0.5,
+                "exponent": 2.0,
                 "palm_up_local": PALM_UP_LOCAL,
             },
         )
 
-        # # Large penalty when plate tilts more than 45°
-        # self.rewards.plate_drop_penalty = RewTerm(
-        #     func=plate_drop_penalty,
-        #     weight=-2.0,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-        #         "max_tilt_angle": 0.7854,  # 45 degrees
-        #         "palm_up_local": PALM_UP_LOCAL,
-        #     },
-        # )
+
+        # Small penalty on right palm linear velocity to reduce oscillation
+        self.rewards.palm_lin_vel = RewTerm(
+            func=palm_lin_vel_penalty,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
+            },
+        )
 
         # ------------------------------------------------------------------
         # Multi-head critic bookkeeping (GCR-PPO)
@@ -158,7 +170,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_rbf", "alive", "dof_pos_limits"]
+        self.reward_component_task_rew = ["plate_orientation_exp", "alive", "palm_lin_vel"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):

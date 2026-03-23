@@ -108,28 +108,36 @@ def _palm_tilt_sq(
     return (1.0 - up_world[:, 2]) / 2.0                               # (N,) in [0, 1]
 
 
-def plate_orientation_rbf(
+def plate_orientation_exp(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    sigma: float = 0.2,
+    exponent: float = 2.0,
     palm_up_local: tuple = (0.0, 1.0, 0.0),
 ) -> torch.Tensor:
-    """Reward keeping the plate horizontal via an RBF kernel.
+    """Reward keeping the plate horizontal using a power-law on the alignment score.
 
-    Checks that the palm's local up-axis (``palm_up_local``) points world +z.
-    Since the plate is fixed to the palm, this directly measures plate tilt.
+    Computes ``((1 + dot(palm_up_world, world_z)) / 2) ^ exponent``.
+    This maps the dot product from [-1, 1] to [0, 1] and raises it to a power,
+    giving exactly 0 when fully upside-down and a smooth gradient everywhere else.
 
     Args:
         env: The RL environment.
         asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
-        sigma: RBF decay width (in sin-space). Smaller = steeper penalty for tilt.
+        exponent: Power to raise the alignment score to. Higher = stricter near upright.
         palm_up_local: Palm-frame unit vector that should point world +z when tray is flat.
 
     Returns:
-        Per-environment RBF reward in [0, 1], shape ``(num_envs,)``.
+        Per-environment reward in [0, 1], shape ``(num_envs,)``.
     """
-    tilt_sq = _palm_tilt_sq(env, asset_cfg, palm_up_local)
-    return torch.exp(-tilt_sq / (2.0 * sigma**2))
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_quat = asset.data.body_quat_w[:, asset_cfg.body_ids[0], :]  # (N, 4)
+
+    up_local = torch.tensor(palm_up_local, dtype=torch.float32, device=palm_quat.device)
+    up_local = up_local.unsqueeze(0).expand(palm_quat.shape[0], -1)  # (N, 3)
+
+    up_world = math_utils.quat_apply(palm_quat, up_local)  # (N, 3)
+    alignment = (1.0 + up_world[:, 2]) / 2.0  # (N,) in [0, 1]
+    return alignment.pow(exponent)
 
 
 def plate_drop_penalty(
@@ -152,3 +160,23 @@ def plate_drop_penalty(
     tilt_sq = _palm_tilt_sq(env, asset_cfg, palm_up_local)
     threshold = math.sin(max_tilt_angle / 2.0) ** 2
     return (tilt_sq > threshold).float()
+
+
+def palm_lin_vel_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize linear velocity of the palm link to reduce unnecessary hand movement.
+
+    Returns the squared norm of the palm's world-frame linear velocity.
+
+    Args:
+        env: The RL environment.
+        asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
+
+    Returns:
+        Per-environment penalty, shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
+    return torch.sum(torch.square(palm_vel), dim=-1)
