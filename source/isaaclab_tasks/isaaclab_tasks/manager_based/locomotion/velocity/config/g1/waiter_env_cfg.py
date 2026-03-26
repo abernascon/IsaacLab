@@ -3,14 +3,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import math
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
+
+from isaaclab_assets import G1_CFG  # isort: skip
 from .mdp import plate_orientation_exp, palm_lin_vel_penalty  # , plate_drop_penalty
 
 
@@ -46,6 +51,9 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # Switch to full G1 mesh (g1.usd) for accurate mass distribution and
+        # self-collision geometry. G1_MINIMAL_CFG strips most collision shapes.
+        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
 
         # ------------------------------------------------------------------
@@ -86,6 +94,24 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         )
 
         # ------------------------------------------------------------------
+        # Terminations — replace contact-based check with geometry-independent ones
+        # ------------------------------------------------------------------
+        # bad_orientation fires when the torso tilts > 60° from upright.
+        # root_height_below_minimum fires when the base drops below 0.5 m.
+        # Both are instantaneous and don't depend on collision mesh quality.
+        self.terminations.bad_orientation = DoneTerm(
+            func=mdp.bad_orientation,
+            params={"limit_angle": math.radians(60)},
+        )
+        self.terminations.low_height = DoneTerm(
+            func=mdp.root_height_below_minimum,
+            params={"minimum_height": 0.3},
+        )
+        # Keep the contact-based termination disabled / replaced — it was unreliable
+        # because the torso may not contact the ground on every fall.
+        self.terminations.base_contact = None
+
+        # ------------------------------------------------------------------
         # Rewards
         # ------------------------------------------------------------------
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
@@ -122,17 +148,18 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
-        # Penalize shoulder roll deviation more strongly to prevent arm closing into torso
-        self.rewards.joint_deviation_shoulder = RewTerm(
-            func=mdp.joint_deviation_l1,
-            weight=-0.5,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot",
-                    joint_names=[".*_shoulder_roll_joint"],
-                ),
-            },
-        )
+        # Full mesh has collision geometry on shoulder/torso links, so self-collision
+        # naturally prevents the arm from closing into the torso — no explicit penalty needed.
+        # self.rewards.joint_deviation_shoulder = RewTerm(
+        #     func=mdp.joint_deviation_l1,
+        #     weight=-0.5,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg(
+        #             "robot",
+        #             joint_names=[".*_shoulder_roll_joint"],
+        #         ),
+        #     },
+        # )
 
         # palm +Y points world +Z when the palm faces up (waiter pose).
         PALM_UP_LOCAL = (0.0, 1.0, 0.0)
