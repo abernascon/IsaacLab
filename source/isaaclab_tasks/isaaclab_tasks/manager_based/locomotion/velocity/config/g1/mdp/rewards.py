@@ -180,3 +180,70 @@ def palm_lin_vel_penalty(
     asset: RigidObject = env.scene[asset_cfg.name]
     palm_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
     return torch.sum(torch.square(palm_vel), dim=-1)
+
+
+def track_palm_ang_vel_z_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of angular velocity command (yaw) using the palm link's yaw rate.
+
+    The palm's world-frame angular velocity is projected into the robot's root body frame
+    so its Z component can be compared against the ``base_velocity`` yaw command.
+
+    Args:
+        env: The RL environment.
+        std: Standard deviation for the exponential kernel.
+        command_name: Name of the velocity command in CommandsCfg.
+        asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
+
+    Returns:
+        Per-environment reward in [0, 1], shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # Palm angular velocity in world frame
+    palm_ang_vel_w = asset.data.body_ang_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
+    # Rotate into root body frame
+    root_quat_w = asset.data.root_quat_w  # (N, 4)
+    palm_ang_vel_b = math_utils.quat_rotate_inverse(root_quat_w, palm_ang_vel_w)  # (N, 3)
+    # Compare Z (yaw) component against the command
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - palm_ang_vel_b[:, 2])
+    return torch.exp(-ang_vel_error / std**2)
+
+
+def track_palm_lin_vel_xy_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of linear velocity commands (xy axes) using the palm link velocity.
+
+    The palm's world-frame velocity is projected into the robot's root body frame so it
+    can be compared directly against the ``base_velocity`` command, which is expressed in
+    that same frame.
+
+    Args:
+        env: The RL environment.
+        std: Standard deviation for the exponential kernel.
+        command_name: Name of the velocity command in CommandsCfg.
+        asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
+
+    Returns:
+        Per-environment reward in [0, 1], shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # Palm velocity in world frame
+    palm_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
+    # Root orientation quaternion (world → body)
+    root_quat_w = asset.data.root_quat_w  # (N, 4)
+    # Rotate palm velocity into the root body frame
+    palm_vel_b = math_utils.quat_rotate_inverse(root_quat_w, palm_vel_w)  # (N, 3)
+    # Compare XY components against the command
+    lin_vel_error = torch.sum(
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - palm_vel_b[:, :2]),
+        dim=1,
+    )
+    return torch.exp(-lin_vel_error / std**2)

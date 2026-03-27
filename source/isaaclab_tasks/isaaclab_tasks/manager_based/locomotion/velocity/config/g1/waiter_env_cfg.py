@@ -16,7 +16,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import plate_orientation_exp, palm_lin_vel_penalty  # , plate_drop_penalty
+from .mdp import plate_orientation_exp, track_palm_lin_vel_xy_exp, track_palm_ang_vel_z_exp  # , plate_drop_penalty
 
 
 @configclass
@@ -131,7 +131,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # Extend joint position limits penalty to arm joints
         self.rewards.dof_pos_limits = RewTerm(
             func=mdp.joint_pos_limits,
-            weight=-1.0,
+            weight=-100.0,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
@@ -148,18 +148,6 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
-        # Full mesh has collision geometry on shoulder/torso links, so self-collision
-        # naturally prevents the arm from closing into the torso — no explicit penalty needed.
-        # self.rewards.joint_deviation_shoulder = RewTerm(
-        #     func=mdp.joint_deviation_l1,
-        #     weight=-0.5,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(
-        #             "robot",
-        #             joint_names=[".*_shoulder_roll_joint"],
-        #         ),
-        #     },
-        # )
 
         # palm +Y points world +Z when the palm faces up (waiter pose).
         PALM_UP_LOCAL = (0.0, 1.0, 0.0)
@@ -175,12 +163,22 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
-
-        # Small penalty on right palm linear velocity to reduce oscillation
-        self.rewards.palm_lin_vel = RewTerm(
-            func=palm_lin_vel_penalty,
-            weight=-0.1,
+        # Track velocity commands using palm velocity (in root body frame) instead of torso
+        self.rewards.track_lin_vel_xy_exp = RewTerm(
+            func=track_palm_lin_vel_xy_exp,
+            weight=1.0,
             params={
+                "command_name": "base_velocity",
+                "std": math.sqrt(0.25),
+                "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
+            },
+        )
+        self.rewards.track_ang_vel_z_exp = RewTerm(
+            func=track_palm_ang_vel_z_exp,
+            weight=1.0,
+            params={
+                "command_name": "base_velocity",
+                "std": math.sqrt(0.25),
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
             },
         )
@@ -197,7 +195,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_exp", "alive", "palm_lin_vel"]
+        self.reward_component_task_rew = ["plate_orientation_exp", "alive"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
