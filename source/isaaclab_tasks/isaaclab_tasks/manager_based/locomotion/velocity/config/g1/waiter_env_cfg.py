@@ -16,7 +16,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import plate_orientation_exp, palm_lin_vel_penalty  # , plate_drop_penalty
+from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty  # , plate_drop_penalty
 
 
 @configclass
@@ -105,11 +105,8 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         )
         self.terminations.low_height = DoneTerm(
             func=mdp.root_height_below_minimum,
-            params={"minimum_height": 0.3},
+            params={"minimum_height": 0.4},
         )
-        # Keep the contact-based termination disabled / replaced — it was unreliable
-        # because the torso may not contact the ground on every fall.
-        self.terminations.base_contact = None
 
         # ------------------------------------------------------------------
         # Rewards
@@ -131,7 +128,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # Extend joint position limits penalty to arm joints
         self.rewards.dof_pos_limits = RewTerm(
             func=mdp.joint_pos_limits,
-            weight=-1.0,
+            weight=-100.0,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
@@ -148,30 +145,17 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
-        # Full mesh has collision geometry on shoulder/torso links, so self-collision
-        # naturally prevents the arm from closing into the torso — no explicit penalty needed.
-        # self.rewards.joint_deviation_shoulder = RewTerm(
-        #     func=mdp.joint_deviation_l1,
-        #     weight=-0.5,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(
-        #             "robot",
-        #             joint_names=[".*_shoulder_roll_joint"],
-        #         ),
-        #     },
-        # )
 
-        # palm +Y points world +Z when the palm faces up (waiter pose).
-        PALM_UP_LOCAL = (0.0, 1.0, 0.0)
+        # Double the inherited torso orientation penalty (-1.0 → -2.0)
+        self.rewards.flat_orientation_l2.weight = -2.0
 
-        # Power-law reward: palm +Y aligned with world +z (plate flat)
+        # Projected-gravity reward: palm +Y points world +Z when flat (tray pose)
         self.rewards.plate_orientation_exp = RewTerm(
-            func=plate_orientation_exp,
+            func=palm_orientation_proj_gravity,
             weight=2.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "exponent": 2.0,
-                "palm_up_local": PALM_UP_LOCAL,
+                "sigma": 0.5,
             },
         )
 
@@ -197,7 +181,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_exp", "alive", "palm_lin_vel"]
+        self.reward_component_task_rew = ["plate_orientation_exp", "alive"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):

@@ -108,6 +108,47 @@ def _palm_tilt_sq(
     return (1.0 - up_world[:, 2]) / 2.0                               # (N,) in [0, 1]
 
 
+def palm_orientation_proj_gravity(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sigma: float = 0.5,
+) -> torch.Tensor:
+    """Reward keeping the plate horizontal via projected gravity in the palm frame.
+
+    Projects world gravity into the palm's local frame (same operation as
+    ``projected_gravity_b`` used for the robot base). When the palm is flat
+    (tray pose, palm +Y pointing world +Z), gravity in the palm frame is
+    ``(0, -1, 0)``. Any tilt rotates gravity into the X-Z plane; the penalty
+    term is ``sin²θ = g_palm_x² + g_palm_z²``, zero when perfectly flat.
+
+    An RBF kernel converts this into a positive reward in (0, 1]:
+        reward = exp(-sin²θ / (2·σ²))
+
+    This is directly analogous to ``flat_orientation_l2`` for the base and uses
+    the same representation as the ``palm_projected_gravity_b`` observation term,
+    so the policy receives the exact same signal it is being rewarded on.
+
+    Args:
+        env:       The RL environment.
+        asset_cfg: Scene entity with ``body_names`` set to the palm link.
+        sigma:     RBF width controlling tilt sensitivity.
+                   σ=0.5 → reward 0.61 at 30°, 0.37 at 45°
+                   σ=0.25 → reward 0.13 at 30°, 0.51 at 15°
+
+    Returns:
+        Per-environment reward in (0, 1], shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_quat = asset.data.body_quat_w[:, asset_cfg.body_ids[0], :]        # (N, 4)
+    g_palm = math_utils.quat_apply_inverse(palm_quat, asset.data.GRAVITY_VEC_W)  # (N, 3)
+    # Target: g_palm = (0, -1, 0) when palm +Y faces world +Z (tray pose).
+    # Use full squared distance from target direction, normalised to [0, 1]:
+    #   ||g_palm - (0,-1,0)||² / 4  →  0 when flat, 1 when fully flipped.
+    # This breaks the palm-up / palm-down symmetry that X²+Z² alone cannot.
+    tilt_sq = (g_palm[:, 0].square() + (g_palm[:, 1] + 1.0).square() + g_palm[:, 2].square()) / 4.0
+    return torch.exp(-tilt_sq / (2.0 * sigma ** 2))
+
+
 def plate_orientation_exp(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

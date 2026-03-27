@@ -4,4 +4,4 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from .height_command import UniformHeightCommand, UniformHeightCommandCfg
-from .rewards import track_height_l2, track_height_rbf, flat_feet_orientation, plate_orientation_exp, plate_drop_penalty, palm_lin_vel_penalty
+from .rewards import track_height_l2, track_height_rbf, flat_feet_orientation, palm_orientation_proj_gravity, plate_orientation_exp, plate_drop_penalty, palm_lin_vel_penalty
