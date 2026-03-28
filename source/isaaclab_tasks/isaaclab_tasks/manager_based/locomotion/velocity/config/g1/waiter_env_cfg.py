@@ -150,6 +150,23 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
+        # Penalize left arm deviation only (right arm is busy holding the plate)
+        self.rewards.joint_deviation_arms = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "left_shoulder_pitch_joint",
+                        "left_shoulder_roll_joint",
+                        "left_shoulder_yaw_joint",
+                        "left_elbow_pitch_joint",
+                        "left_elbow_roll_joint",
+                    ],
+                ),
+            },
+        )
 
         # Projected-gravity reward: palm +Y points world +Z when flat (tray pose)
         self.rewards.plate_orientation_exp = RewTerm(
