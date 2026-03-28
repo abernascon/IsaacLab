@@ -55,6 +55,11 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # self-collision geometry. G1_MINIMAL_CFG strips most collision shapes.
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+        self.scene.robot.init_state.joint_pos["right_elbow_roll_joint"] = 1.57  # supinate forearm → palm faces up
+        # Override the wildcard ".*_elbow_pitch_joint" to set right side differently
+        self.scene.robot.init_state.joint_pos["left_elbow_pitch_joint"] = 0.87  # keep left at default
+        self.scene.robot.init_state.joint_pos["right_elbow_pitch_joint"] = 0.5  # a bit bent forward → more natural waiter pose
+        del self.scene.robot.init_state.joint_pos[".*_elbow_pitch_joint"]  # remove wildcard to avoid conflict
 
         # ------------------------------------------------------------------
         # Scene: plate as a compound shape on the palm link
@@ -146,26 +151,13 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         )
 
 
-        # Double the inherited torso orientation penalty (-1.0 → -2.0)
-        self.rewards.flat_orientation_l2.weight = -2.0
-
         # Projected-gravity reward: palm +Y points world +Z when flat (tray pose)
         self.rewards.plate_orientation_exp = RewTerm(
             func=palm_orientation_proj_gravity,
-            weight=2.0,
+            weight=3.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
                 "sigma": 0.5,
-            },
-        )
-
-
-        # Small penalty on right palm linear velocity to reduce oscillation
-        self.rewards.palm_lin_vel = RewTerm(
-            func=palm_lin_vel_penalty,
-            weight=-0.1,
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
             },
         )
 
@@ -181,7 +173,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_exp", "alive"]
+        self.reward_component_task_rew = ["plate_orientation_exp", "alive", "termination_penalty"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
