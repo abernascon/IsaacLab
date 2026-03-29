@@ -14,6 +14,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 
 def track_height_l2(
@@ -201,6 +202,41 @@ def plate_drop_penalty(
     tilt_sq = _palm_tilt_sq(env, asset_cfg, palm_up_local)
     threshold = math.sin(max_tilt_angle / 2.0) ** 2
     return (tilt_sq > threshold).float()
+
+
+def track_palm_lin_vel_xy_yaw_frame_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of linear velocity commands (xy axes) using the palm's velocity.
+
+    Transforms the palm's world-frame linear velocity into the gravity-aligned
+    (yaw-only) frame of the palm, then compares XY components against the command.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_quat = asset.data.body_quat_w[:, asset_cfg.body_ids[0], :]       # (N, 4)
+    palm_lin_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
+    # Project palm velocity into the palm's yaw-aligned frame
+    vel_yaw = quat_apply_inverse(yaw_quat(palm_quat), palm_lin_vel_w)
+    lin_vel_error = torch.sum(
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
+    )
+    return torch.exp(-lin_vel_error / std**2)
+
+
+def track_palm_ang_vel_z_world_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) using the palm's angular velocity."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_ang_vel_w = asset.data.body_ang_vel_w[:, asset_cfg.body_ids[0], :]  # (N, 3)
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - palm_ang_vel_w[:, 2])
+    return torch.exp(-ang_vel_error / std**2)
 
 
 def palm_lin_vel_penalty(

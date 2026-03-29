@@ -16,7 +16,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty  # , plate_drop_penalty
+from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp  # , plate_drop_penalty
 
 
 @configclass
@@ -117,6 +117,19 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # Rewards
         # ------------------------------------------------------------------
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
+
+        # Override velocity tracking: track right palm velocity instead of torso
+        palm_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
+        self.rewards.track_lin_vel_xy_exp = RewTerm(
+            func=track_palm_lin_vel_xy_yaw_frame_exp,
+            weight=1.0,
+            params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
+        )
+        self.rewards.track_ang_vel_z_exp = RewTerm(
+            func=track_palm_ang_vel_z_world_exp,
+            weight=1.0,
+            params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
+        )
 
         # Reduce feet_air_time weight to prevent GCR-PPO from exploiting
         # single-stance balancing (inherited weight=0.25 is too high)
