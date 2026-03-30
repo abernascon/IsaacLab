@@ -163,7 +163,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
-        # Penalize left arm deviation only (right arm is busy holding the plate)
+        # Penalize arm deviation from initial pose (both arms)
         self.rewards.joint_deviation_arms = RewTerm(
             func=mdp.joint_deviation_l1,
             weight=-0.1,
@@ -176,6 +176,11 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
                         "left_shoulder_yaw_joint",
                         "left_elbow_pitch_joint",
                         "left_elbow_roll_joint",
+                        "right_shoulder_pitch_joint",
+                        "right_shoulder_roll_joint",
+                        "right_shoulder_yaw_joint",
+                        "right_elbow_pitch_joint",
+                        "right_elbow_roll_joint",
                     ],
                 ),
             },
