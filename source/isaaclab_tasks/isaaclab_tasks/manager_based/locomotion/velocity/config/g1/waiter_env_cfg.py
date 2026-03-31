@@ -208,7 +208,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = ["plate_orientation_exp", "alive", "termination_penalty"]
+        self.reward_component_task_rew = [["alive", "termination_penalty"], ["plate_orientation_exp"], ["track_lin_vel_xy_exp", "track_ang_vel_z_exp"]]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
