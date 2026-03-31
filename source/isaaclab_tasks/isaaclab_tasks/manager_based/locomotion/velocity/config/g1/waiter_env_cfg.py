@@ -16,7 +16,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp  # , plate_drop_penalty
+from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, WaiterVelocityCommandCfg  # , plate_drop_penalty
 
 
 @configclass
@@ -50,6 +50,20 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+        # Replace base_velocity command with waiter variant that logs plate tilt error
+        old = self.commands.base_velocity
+        self.commands.base_velocity = WaiterVelocityCommandCfg(
+            palm_body_name="right_palm_link",
+            asset_name=old.asset_name,
+            resampling_time_range=old.resampling_time_range,
+            rel_standing_envs=old.rel_standing_envs,
+            rel_heading_envs=old.rel_heading_envs,
+            heading_command=old.heading_command,
+            heading_control_stiffness=old.heading_control_stiffness,
+            debug_vis=old.debug_vis,
+            ranges=old.ranges,
+        )
 
         # Switch to full G1 mesh (g1.usd) for accurate mass distribution and
         # self-collision geometry. G1_MINIMAL_CFG strips most collision shapes.
@@ -208,7 +222,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        self.reward_component_task_rew = [["alive", "termination_penalty"], ["plate_orientation_exp"], ["track_lin_vel_xy_exp", "track_ang_vel_z_exp"]]
+        self.reward_component_task_rew = ["alive", "termination_penalty", "plate_orientation_exp"]
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
