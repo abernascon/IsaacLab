@@ -51,6 +51,8 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        self.scene.num_envs = 8192
+
         # Replace base_velocity command with waiter variant that logs plate tilt error
         old = self.commands.base_velocity
         self.commands.base_velocity = WaiterVelocityCommandCfg(
@@ -72,7 +74,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         self.scene.robot.init_state.joint_pos["right_elbow_roll_joint"] = 1.57  # supinate forearm → palm faces up
         # Override the wildcard ".*_elbow_pitch_joint" to set right side differently
         self.scene.robot.init_state.joint_pos["left_elbow_pitch_joint"] = 0.87  # keep left at default
-        self.scene.robot.init_state.joint_pos["right_elbow_pitch_joint"] = 0.5  # a bit bent forward → more natural waiter pose
+        self.scene.robot.init_state.joint_pos["right_elbow_pitch_joint"] = 0.0  #  waiter pose
         del self.scene.robot.init_state.joint_pos[".*_elbow_pitch_joint"]  # remove wildcard to avoid conflict
 
         # ------------------------------------------------------------------

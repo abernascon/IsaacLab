@@ -6,6 +6,10 @@
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+from isaaclab_assets import G1_CFG  # isort: skip
+import math
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 
 from .rough_env_cfg import G1RoughEnvCfg
 
@@ -15,6 +19,18 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+
+        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+        self.terminations.bad_orientation = DoneTerm(
+            func=mdp.bad_orientation,
+            params={"limit_angle": math.radians(80)},
+        )
+        self.terminations.low_height = DoneTerm(
+            func=mdp.root_height_below_minimum,
+            params={"minimum_height": 0.2},
+        )
+
 
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"
@@ -51,9 +67,9 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
             attr for attr in dir(self.rewards)
             if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
         ]
-        # task rewards: velocity tracking and feet air time
+        # task rewards: velocity tracking
         self.reward_component_task_rew = [
-            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "feet_air_time",
+            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "termination_penalty"
         ]
 
 
