@@ -15,6 +15,7 @@ from isaaclab.utils import configclass
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
+from isaaclab_assets import G1_MINIMAL_CFG  # isort: skip
 from isaaclab_assets import G1_CFG  # isort: skip
 from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, WaiterVelocityCommandCfg  # , plate_drop_penalty
 
@@ -51,8 +52,6 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.num_envs = 8192
-
         # Replace base_velocity command with waiter variant that logs plate tilt error
         old = self.commands.base_velocity
         self.commands.base_velocity = WaiterVelocityCommandCfg(
@@ -67,10 +66,10 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             ranges=old.ranges,
         )
 
-        # Switch to full G1 mesh (g1.usd) for accurate mass distribution and
-        # self-collision geometry. G1_MINIMAL_CFG strips most collision shapes.
-        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        # Use minimal G1 mesh (g1_minimal.usd) with self-collisions enabled.
+        self.scene.robot = G1_MINIMAL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+        
         self.scene.robot.init_state.joint_pos["right_elbow_roll_joint"] = 1.57  # supinate forearm → palm faces up
         # Override the wildcard ".*_elbow_pitch_joint" to set right side differently
         self.scene.robot.init_state.joint_pos["left_elbow_pitch_joint"] = 0.87  # keep left at default

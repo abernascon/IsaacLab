@@ -20,18 +20,6 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-
-        self.terminations.bad_orientation = DoneTerm(
-            func=mdp.bad_orientation,
-            params={"limit_angle": math.radians(80)},
-        )
-        self.terminations.low_height = DoneTerm(
-            func=mdp.root_height_below_minimum,
-            params={"minimum_height": 0.2},
-        )
-
-
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
