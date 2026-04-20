@@ -71,6 +71,6 @@ class G1WaiterPPORunnerCfg(G1FlatPPORunnerCfg):
 class G1WaiterBasicPPORunnerCfg(G1WaiterPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
-
+        
         self.experiment_name = "g1_waiter_basic"
 

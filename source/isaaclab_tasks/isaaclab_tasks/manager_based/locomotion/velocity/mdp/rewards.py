@@ -110,6 +110,29 @@ def track_ang_vel_z_world_exp(
     return torch.exp(-ang_vel_error / std**2)
 
 
+def torso_lin_vel_xy_l2(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Penalize linear velocity of the torso (root body) in the XY plane using L2 norm."""
+    asset = env.scene[asset_cfg.name]
+    return torch.sum(torch.square(asset.data.root_lin_vel_w[:, :2]), dim=1)
+
+
+def torso_stillness_exp(
+    env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward for keeping the torso stationary using an exponential kernel.
+
+    Symmetric with palm tracking rewards (both live in [0, 1]) so the two terms
+    create a genuinely infeasible conflict when a nonzero velocity is commanded:
+    walking satisfies palm tracking but collapses this reward to ~0, and standing
+    still maximises this reward but fails palm tracking.
+    """
+    asset = env.scene[asset_cfg.name]
+    vel_sq = torch.sum(torch.square(asset.data.root_lin_vel_w[:, :2]), dim=1)
+    return torch.exp(-vel_sq / std**2)
+
+
 def stand_still_joint_deviation_l1(
     env, command_name: str, command_threshold: float = 0.06, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:

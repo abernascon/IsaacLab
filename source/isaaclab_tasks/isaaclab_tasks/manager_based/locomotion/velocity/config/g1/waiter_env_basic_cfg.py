@@ -16,7 +16,7 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, WaiterVelocityCommandCfg  # , plate_drop_penalty
+from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, palm_height_penalty, palm_height_exp, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, WaiterVelocityCommandCfg, torso_stillness_exp  # , plate_drop_penalty
 
 
 @configclass
@@ -56,6 +56,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         old = self.commands.base_velocity
         self.commands.base_velocity = WaiterVelocityCommandCfg(
             palm_body_name="right_palm_link",
+            palm_target_height=0.5,
             asset_name=old.asset_name,
             resampling_time_range=old.resampling_time_range,
             rel_standing_envs=old.rel_standing_envs,
@@ -125,7 +126,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         )
         self.terminations.low_height = DoneTerm(
             func=mdp.root_height_below_minimum,
-            params={"minimum_height": 0.4},
+            params={"minimum_height": 0.3},
         )
 
         # ------------------------------------------------------------------
@@ -137,6 +138,17 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # about hand velocity; locomotion is purely emergent from achieving it.
         self.rewards.track_lin_vel_xy_exp = None
         self.rewards.track_ang_vel_z_exp = None
+
+        # Stillness reward — symmetric exponential in [0,1], same weight as palm
+        # tracking so the two terms are genuinely zero-sum when a nonzero velocity
+        # is commanded: walking collapses this to ~0, standing still collapses
+        # palm tracking to ~0.  GCR-PPO gradient projection then has a real,
+        # infeasible trade-off to resolve.
+        #self.rewards.torso_stillness_exp = RewTerm(
+        #    func=torso_stillness_exp,
+        #    weight=0.5,
+        #    params={"std": 0.5},
+        #)
 
         # Track palm velocity against the base_velocity command.
         palm_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
@@ -206,29 +218,37 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             },
         )
 
+        # Reward palm proximity to target height (1.0 m) using RBF kernel.
+        # sigma=0.1 → reward ~0.37 at 10cm off, ~0.02 at 20cm off.
+        self.rewards.palm_height_exp = RewTerm(
+            func=palm_height_exp,
+            weight=1.0,
+            params={
+                "target_height": 0.5,
+                "sigma": 0.2,
+                "asset_cfg": palm_cfg,
+            },
+        )
+
         # Projected-gravity reward: palm +Y points world +Z when flat (tray pose)
         self.rewards.plate_orientation_exp = RewTerm(
             func=palm_orientation_proj_gravity,
-            weight=3.0,
+            weight=1.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "sigma": 0.5,
+                "sigma": 0.1,
             },
         )
 
         # ------------------------------------------------------------------
         # Multi-head critic bookkeeping (GCR-PPO)
         # ------------------------------------------------------------------
-        self.reward_components = sum(
-            isinstance(getattr(self.rewards, attr), RewTerm)
-            for attr in dir(self.rewards)
-            if not attr.startswith("__")
-        )
         self.reward_component_names = [
-            attr for attr in dir(self.rewards)
-            if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
+            name for name, val in self.rewards.__dict__.items()
+            if isinstance(val, RewTerm)
         ]
-        self.reward_component_task_rew = ["alive", "termination_penalty", "plate_orientation_exp"]
+        self.reward_components = len(self.reward_component_names)
+        self.reward_component_task_rew = ["plate_orientation_exp", "alive"]  # for tracking learning curves
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):

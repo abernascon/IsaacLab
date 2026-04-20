@@ -239,6 +239,56 @@ def track_palm_ang_vel_z_world_exp(
     return torch.exp(-ang_vel_error / std**2)
 
 
+def palm_height_penalty(
+    env: ManagerBasedRLEnv,
+    target_height: float = 0.8,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize deviation of the right palm height from a target height.
+
+    Returns the squared difference between the palm's world-frame z position
+    and the target height.
+
+    Args:
+        env: The RL environment.
+        target_height: Desired palm height in world frame (meters).
+        asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
+
+    Returns:
+        Per-environment penalty, shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_z = asset.data.body_pos_w[:, asset_cfg.body_ids[0], 2]  # (N,)
+    return torch.square(palm_z - target_height)
+
+
+def palm_height_exp(
+    env: ManagerBasedRLEnv,
+    target_height: float = 1.0,
+    sigma: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward keeping the palm at a target height using an exponential (RBF) kernel.
+
+    Returns exp(-(palm_z - target)² / sigma²), which is 1.0 at the target and
+    decays smoothly. With sigma=0.1 the reward is ~0.37 at 10 cm off-target and
+    ~0.02 at 20 cm off-target, giving a much stronger learning signal than a
+    squared penalty near the goal.
+
+    Args:
+        env: The RL environment.
+        target_height: Desired palm height in world frame (meters).
+        sigma: RBF width — smaller = sharper peak, stronger gradient near target.
+        asset_cfg: Scene entity for the robot, with ``body_names`` set to the palm link.
+
+    Returns:
+        Per-environment reward in (0, 1], shape ``(num_envs,)``.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_z = asset.data.body_pos_w[:, asset_cfg.body_ids[0], 2]  # (N,)
+    return torch.exp(-torch.square(palm_z - target_height) / (sigma ** 2))
+
+
 def palm_lin_vel_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

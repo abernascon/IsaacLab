@@ -220,17 +220,13 @@ class HumanoidEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physics_material.dynamic_friction = 1.0
         self.sim.physics_material.restitution = 0.0
 
-        # -- multi-head critic support --
-        # count the number of reward components from the rewards config
-        self.reward_components = sum(
-            isinstance(getattr(self.rewards, attr), RewTerm)
-            for attr in dir(self.rewards)
-            if not attr.startswith("__")
-        )
-        # names of the reward components (sorted alphabetically by attribute name)
+        # ------------------------------------------------------------------
+        # Multi-head critic bookkeeping (GCR-PPO)
+        # ------------------------------------------------------------------
         self.reward_component_names = [
-            attr for attr in dir(self.rewards)
-            if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
+            name for name, val in self.rewards.__dict__.items()
+            if isinstance(val, RewTerm)
         ]
+        self.reward_components = len(self.reward_component_names)
         # which reward components are "task" rewards (not projected by PCGrad)
-        self.reward_component_task_rew = ["progress", "alive", "upright", "move_to_target"]
+        self.reward_component_task_rew = []
