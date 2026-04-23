@@ -289,6 +289,21 @@ def palm_height_exp(
     return torch.exp(-torch.square(palm_z - target_height) / (sigma ** 2))
 
 
+def palm_lin_vel_yaw_frame(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Palm linear velocity projected into the palm's yaw-aligned frame, shape ``(N, 3)``.
+
+    Matches the frame used by :func:`track_palm_lin_vel_xy_yaw_frame_exp`, so the
+    policy observes the exact velocity component it is being rewarded on.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    palm_quat = asset.data.body_quat_w[:, asset_cfg.body_ids[0], :]
+    palm_lin_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]
+    return quat_apply_inverse(yaw_quat(palm_quat), palm_lin_vel_w)
+
+
 def palm_lin_vel_penalty(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),

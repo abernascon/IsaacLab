@@ -56,7 +56,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         old = self.commands.base_velocity
         self.commands.base_velocity = WaiterVelocityCommandCfg(
             palm_body_name="right_palm_link",
-            palm_target_height=0.5,
+            palm_target_height=0.55,
             asset_name=old.asset_name,
             resampling_time_range=old.resampling_time_range,
             rel_standing_envs=old.rel_standing_envs,
@@ -66,6 +66,10 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             debug_vis=old.debug_vis,
             ranges=old.ranges,
         )
+        # Double the inherited speed ranges locally.
+        #self.commands.base_velocity.ranges.lin_vel_x = (0.0, 2.0)
+        #self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
+        #self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # Switch to full G1 mesh (g1.usd) for accurate mass distribution and
         # self-collision geometry. G1_MINIMAL_CFG strips most collision shapes.
@@ -154,12 +158,12 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         palm_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
         self.rewards.track_hand_lin_vel_xy_exp = RewTerm(
             func=track_palm_lin_vel_xy_yaw_frame_exp,
-            weight=1.0,
+            weight=2.0,
             params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
         self.rewards.track_hand_ang_vel_z_exp = RewTerm(
             func=track_palm_ang_vel_z_world_exp,
-            weight=1.0,
+            weight=2.0,
             params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
 
@@ -220,15 +224,15 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
 
         # Reward palm proximity to target height (1.0 m) using RBF kernel.
         # sigma=0.1 → reward ~0.37 at 10cm off, ~0.02 at 20cm off.
-        self.rewards.palm_height_exp = RewTerm(
-            func=palm_height_exp,
-            weight=1.0,
-            params={
-                "target_height": 0.5,
-                "sigma": 0.2,
-                "asset_cfg": palm_cfg,
-            },
-        )
+        #self.rewards.palm_height_exp = RewTerm(
+        #    func=palm_height_exp,
+        #    weight=1.0,
+        #    params={
+        #        "target_height": 0.55,
+        #        "sigma": 0.2,
+        #        "asset_cfg": palm_cfg,
+        #    },
+        #)
 
         # Projected-gravity reward: palm +Y points world +Z when flat (tray pose)
         self.rewards.plate_orientation_exp = RewTerm(
@@ -236,7 +240,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             weight=1.0,
             params={
                 "asset_cfg": SceneEntityCfg("robot", body_names="right_palm_link"),
-                "sigma": 0.1,
+                "sigma": 0.2,
             },
         )
 
@@ -248,7 +252,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             if isinstance(val, RewTerm)
         ]
         self.reward_components = len(self.reward_component_names)
-        self.reward_component_task_rew = ["plate_orientation_exp", "alive"]  # for tracking learning curves
+        self.reward_component_task_rew = ["alive"]  # for tracking learning curves
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):

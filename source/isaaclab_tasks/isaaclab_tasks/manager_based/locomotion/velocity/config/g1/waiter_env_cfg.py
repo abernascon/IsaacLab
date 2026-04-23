@@ -18,7 +18,7 @@ from .flat_env_cfg import G1FlatEnvCfg
 
 from isaaclab_assets import G1_MINIMAL_CFG  # isort: skip
 from isaaclab_assets import G1_CFG  # isort: skip
-from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, WaiterVelocityCommandCfg  # , plate_drop_penalty
+from .mdp import palm_orientation_proj_gravity, palm_lin_vel_penalty, palm_lin_vel_yaw_frame, track_palm_lin_vel_xy_yaw_frame_exp, track_palm_ang_vel_z_world_exp, ScaledVelocityCommandCfg  # , plate_drop_penalty
 
 
 @configclass
@@ -54,14 +54,20 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         super().__post_init__()
 
         # ------------------------------------------------------------------
-        # Commands: two INDEPENDENT velocity commands.
-        # base_velocity  — torso tracking (inherited config, own heading & speed)
-        # palm_velocity  — palm tracking (heading error computed from the palm's
-        #                  yaw, not the robot root; see WaiterVelocityCommand)
+        # Commands: systematic conflict for GCR-PPO.
+        # base_velocity  — torso command, capped at half the inherited ranges so
+        #                  the torso is always the slower body.
+        # palm_velocity  — palm command, mirrored from base_velocity at 2x so
+        #                  palm target == original range (up to 1.0 m/s).
+        # Conflict: the palm naturally moves at ~v_torso with the torso, but is
+        # commanded at 2*v_torso, so the arm must actively reach forward.
         # ------------------------------------------------------------------
         old_cmd = self.commands.base_velocity
-        self.commands.palm_velocity = WaiterVelocityCommandCfg(
-            palm_body_name="right_palm_link",
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.25, 0.25)
+        self.commands.palm_velocity = ScaledVelocityCommandCfg(
+            source_command_name="base_velocity",
+            speed_scale=2.0,
             asset_name=old_cmd.asset_name,
             resampling_time_range=old_cmd.resampling_time_range,
             rel_standing_envs=old_cmd.rel_standing_envs,
@@ -71,11 +77,14 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             debug_vis=old_cmd.debug_vis,
             ranges=old_cmd.ranges,
         )
-        # base_velocity is kept as-is from the inherited config (independent heading & magnitude)
 
         # Expose the palm command to the policy so it can condition on it.
         self.observations.policy.palm_velocity_commands = ObsTerm(
             func=mdp.generated_commands, params={"command_name": "palm_velocity"}
+        )
+        palm_obs_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
+        self.observations.policy.palm_lin_vel = ObsTerm(  # type: ignore[attr-defined]
+            func=palm_lin_vel_yaw_frame, params={"asset_cfg": palm_obs_cfg}
         )
 
         # Use minimal G1 mesh (g1_minimal.usd) with self-collisions enabled.
@@ -153,26 +162,26 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # Torso tracking against `base_velocity` (independent command).
         self.rewards.track_torso_lin_vel_xy_exp = RewTerm(
             func=mdp.track_lin_vel_xy_yaw_frame_exp,
-            weight=1.0,
-            params={"command_name": "base_velocity", "std": 0.3},
+            weight=2.0,
+            params={"command_name": "base_velocity", "std": 0.5},
         )
         self.rewards.track_torso_ang_vel_z_exp = RewTerm(
             func=mdp.track_ang_vel_z_world_exp,
-            weight=1.0,
-            params={"command_name": "base_velocity", "std": 0.3},
+            weight=2.0,
+            params={"command_name": "base_velocity", "std": 0.5},
         )
 
         # Hand tracking against `palm_velocity` (independent command).
         palm_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
         self.rewards.track_hand_lin_vel_xy_exp = RewTerm(
             func=track_palm_lin_vel_xy_yaw_frame_exp,
-            weight=1.0,
-            params={"command_name": "palm_velocity", "std": 0.3, "asset_cfg": palm_cfg},
+            weight=2.0,
+            params={"command_name": "palm_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
         self.rewards.track_hand_ang_vel_z_exp = RewTerm(
             func=track_palm_ang_vel_z_world_exp,
-            weight=1.0,
-            params={"command_name": "palm_velocity", "std": 0.3, "asset_cfg": palm_cfg},
+            weight=2.0,
+            params={"command_name": "palm_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
 
         # Reduce feet_air_time weight to prevent GCR-PPO from exploiting
@@ -210,7 +219,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # Penalize arm deviation from initial pose (both arms)
         self.rewards.joint_deviation_arms = RewTerm(
             func=mdp.joint_deviation_l1,
-            weight=-0.1,
+            weight=-0.05,
             params={
                 "asset_cfg": SceneEntityCfg(
                     "robot",
@@ -248,7 +257,7 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
             if isinstance(val, RewTerm)
         ]
         self.reward_components = len(self.reward_component_names)
-        self.reward_component_task_rew = ["alive", "track_torso_lin_vel_xy_exp", "track_torso_ang_vel_z_exp"]  # for tracking learning curves
+        self.reward_component_task_rew = ["alive", "track_hand_lin_vel_xy_exp", "track_hand_ang_vel_z_exp"]  # for tracking learning curves
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
     def __post_init__(self) -> None:
