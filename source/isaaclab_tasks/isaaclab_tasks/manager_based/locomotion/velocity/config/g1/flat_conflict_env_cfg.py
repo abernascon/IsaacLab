@@ -37,7 +37,8 @@ class G1FlatConflictCommandsCfg(CommandsCfg):
             lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
         ),
         source_command_name="base_velocity",
-        speed_scale=-1.0,  # linear XY: arrow points opposite direction
+        x_scale=1.0,   # forward component is shared — both commands go forward
+        y_scale=-1.0,  # only lateral direction is flipped: base=left, conflict=right
         yaw_scale=-1.0,    # yaw: turn in the opposite direction (conflicting heading)
     )
 
@@ -128,7 +129,10 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         )
 
         # Tune command ranges (also sync conflict_velocity ranges so they match)
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        # base_velocity: forward-left (positive x and positive y)
+        # conflict_velocity mirrors with y_scale=-1.0: forward-right (same x, negated y)
+        # Equal XY magnitude is guaranteed since conflict is a pure y sign-flip.
+        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.2, 1.0)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
         self.commands.conflict_velocity.ranges = self.commands.base_velocity.ranges
@@ -140,8 +144,8 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         ]
         self.reward_components = len(self.reward_component_names)
         self.reward_component_task_rew = [
-            "track_lin_vel_xy_exp",
-            "track_ang_vel_z_exp",
+            "track_lin_vel_xy_conflict_exp",
+            "track_ang_vel_z_conflict_exp",
             "alive",
         ]
 
