@@ -112,15 +112,15 @@ class WaiterVelocityCommandCfg(UniformVelocityCommandCfg):
 
 
 class ScaledVelocityCommand(UniformVelocityCommand):
-    """Velocity command that mirrors another command with a fixed speed scale factor.
+    """Velocity command that mirrors another command with independent XY and yaw scale factors.
 
     Instead of sampling its own velocities, this command reads from a source
     command (looked up by name in the command manager) every step and scales
-    the linear XY components by ``speed_scale``.  The yaw component is copied
-    unscaled so both commands share the same heading target.
+    the linear XY components by ``speed_scale`` and the yaw component by
+    ``yaw_scale``.
 
-    This creates a genuine gradient conflict for GCR-PPO: the torso is rewarded
-    for moving at half the speed the hand is commanded to achieve.
+    Setting both to -1.0 creates a full velocity conflict for GCR-PPO: every
+    component of the command points in the opposite direction of the source.
     """
 
     cfg: ScaledVelocityCommandCfg
@@ -129,18 +129,19 @@ class ScaledVelocityCommand(UniformVelocityCommand):
         super().__init__(cfg, env)
         self._source_command_name = cfg.source_command_name
         self._speed_scale = cfg.speed_scale
+        self._yaw_scale = cfg.yaw_scale
 
     def _resample_command(self, env_ids):
         # Sync from source for the resampled envs (covers reset path).
         source_cmd = self._env.command_manager.get_command(self._source_command_name)
         self.vel_command_b[env_ids, :2] = source_cmd[env_ids, :2] * self._speed_scale
-        self.vel_command_b[env_ids, 2] = source_cmd[env_ids, 2]
+        self.vel_command_b[env_ids, 2] = source_cmd[env_ids, 2] * self._yaw_scale
 
     def _update_command(self):
         # Full sync every step (covers mid-episode resampling of the source).
         source_cmd = self._env.command_manager.get_command(self._source_command_name)
         self.vel_command_b[:, :2] = source_cmd[:, :2] * self._speed_scale
-        self.vel_command_b[:, 2] = source_cmd[:, 2]
+        self.vel_command_b[:, 2] = source_cmd[:, 2] * self._yaw_scale
 
 
 @configclass
@@ -154,3 +155,6 @@ class ScaledVelocityCommandCfg(UniformVelocityCommandCfg):
 
     speed_scale: float = 0.5
     """Multiplier applied to the source command's linear XY velocities."""
+
+    yaw_scale: float = 1.0
+    """Multiplier applied to the source command's yaw velocity. Set to -1.0 to conflict."""
