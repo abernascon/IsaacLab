@@ -6,7 +6,10 @@
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+import math
 
+from isaaclab_assets.robots.unitree import G1_CFG
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 from .flat_env_cfg import G1FlatEnvCfg
 from .mdp import UniformHeightCommandCfg, track_height_l2, track_height_rbf, flat_feet_orientation
@@ -26,50 +29,63 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # switch robot to G1 full mesh
+        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+
         # Add height command:
         self.commands.target_height = UniformHeightCommandCfg(
             asset_name="robot",
             resampling_time_range=(20.0, 20.0),
-            ranges=UniformHeightCommandCfg.Ranges(height=(0.45, 0.45)),
+            ranges=UniformHeightCommandCfg.Ranges(height=(0.6, 0.6)),
         )
 
         # Add height-tracking reward using RBF kernel 
         self.rewards.track_height_rbf = RewTerm(
             func=track_height_rbf,
-            weight=3.0,
+            weight=2.0,
             params={
                 "command_name": "target_height",
                 "asset_cfg": SceneEntityCfg("robot"),
-                "sigma": 0.1,  
+                "sigma": 0.2,  
             },
         )
+        # Reduce reward for feet air time since GCR exploits it
+        self.rewards.feet_air_time.weight = 0.1
         
         # Add survival reward 
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
+
+        #Terimantions for full body mesh
+        self.terminations.bad_orientation = DoneTerm(
+            func=mdp.bad_orientation,
+            params={"limit_angle": math.radians(60)},
+        )
+        self.terminations.low_height = DoneTerm(
+            func=mdp.root_height_below_minimum,
+            params={"minimum_height": 0.3},
+        )
         
         # Penalize foot tilting
-        self.rewards.flat_feet_orientation = RewTerm(
-            func=flat_feet_orientation,
-            weight=-2.0,
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-            },
-        )
+        #self.rewards.flat_feet_orientation = RewTerm(
+        #    func=flat_feet_orientation,
+        #    weight=-2.0,
+        #    params={
+        #        "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+        #    },
+        #)
 
-        # Update multi-head critic fields to include the new reward
-        self.reward_components = sum(
-            isinstance(getattr(self.rewards, attr), RewTerm)
-            for attr in dir(self.rewards)
-            if not attr.startswith("__")
-        )
+        # -- multi-head critic support --
         self.reward_component_names = [
-            attr for attr in dir(self.rewards)
-            if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
+            name for name, val in self.rewards.__dict__.items()
+            if isinstance(val, RewTerm)
         ]
-
+        self.reward_components = len(self.reward_component_names)
         self.reward_component_task_rew = [
-            "track_height_rbf",
+            "track_lin_vel_xy_exp",
+            "track_ang_vel_z_exp",
             "alive",
+            "track_height_rbf",
         ]
 
 
