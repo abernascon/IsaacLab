@@ -2,8 +2,9 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
+import math
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab_assets import G1_CFG  # isort: skip
@@ -29,8 +30,22 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
         # no terrain curriculum
         self.curriculum.terrain_levels = None
 
+        # Use full mesh
+        self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
+
+        # Terminations for full mesh
+        self.terminations.bad_orientation = DoneTerm(
+            func=mdp.bad_orientation,
+            params={"limit_angle": math.radians(60)},
+        )
+        self.terminations.low_height = DoneTerm(
+            func=mdp.root_height_below_minimum,
+            params={"minimum_height": 0.3},
+        )
+
         # Rewards
-        self.rewards.track_ang_vel_z_exp.weight = 1.0
+        #self.rewards.track_ang_vel_z_exp.weight = 1.0
         self.rewards.lin_vel_z_l2.weight = -0.2
         self.rewards.action_rate_l2.weight = -0.005
         self.rewards.dof_acc_l2.weight = -1.0e-7
@@ -46,19 +61,12 @@ class G1FlatEnvCfg(G1RoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # -- multi-head critic support --
-        self.reward_components = sum(
-            isinstance(getattr(self.rewards, attr), RewTerm)
-            for attr in dir(self.rewards)
-            if not attr.startswith("__")
-        )
         self.reward_component_names = [
-            attr for attr in dir(self.rewards)
-            if isinstance(getattr(self.rewards, attr), RewTerm) and not attr.startswith("__")
+            name for name, val in self.rewards.__dict__.items()
+            if isinstance(val, RewTerm)
         ]
-        # task rewards: velocity tracking
-        self.reward_component_task_rew = [
-            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "termination_penalty"
-        ]
+        self.reward_components = len(self.reward_component_names)
+        self.reward_component_task_rew = ["track_lin_vel_xy_exp", "alive"] 
 
 
 class G1FlatEnvCfg_PLAY(G1FlatEnvCfg):

@@ -33,25 +33,28 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
 
+
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+
         # Add height command:
         self.commands.target_height = UniformHeightCommandCfg(
             asset_name="robot",
             resampling_time_range=(20.0, 20.0),
-            ranges=UniformHeightCommandCfg.Ranges(height=(0.6, 0.6)),
+            ranges=UniformHeightCommandCfg.Ranges(height=(0.65, 0.65)),
         )
 
         # Add height-tracking reward using RBF kernel 
         self.rewards.track_height_rbf = RewTerm(
             func=track_height_rbf,
-            weight=2.0,
+            weight=1.0,
             params={
                 "command_name": "target_height",
                 "asset_cfg": SceneEntityCfg("robot"),
-                "sigma": 0.2,  
+                "sigma": 0.5,  
             },
         )
-        # Reduce reward for feet air time since GCR exploits it
-        self.rewards.feet_air_time.weight = 0.1
         
         # Add survival reward 
         self.rewards.alive = RewTerm(func=mdp.is_alive, weight=0.25)
