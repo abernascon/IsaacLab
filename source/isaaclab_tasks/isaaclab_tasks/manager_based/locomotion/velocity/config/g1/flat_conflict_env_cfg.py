@@ -37,7 +37,7 @@ class G1FlatConflictCommandsCfg(CommandsCfg):
             lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
         ),
         source_command_name="base_velocity",
-        x_scale=1.0,   # forward component is shared — both commands go forward
+        x_scale=-1.0,   # forward component is shared — both commands go forward
         y_scale=-1.0,  # only lateral direction is flipped: base=left, conflict=right
         yaw_scale=-1.0,    # yaw: turn in the opposite direction (conflicting heading)
     )
@@ -62,18 +62,16 @@ class G1FlatConflictObsCfg(ObservationsCfg):
 class G1FlatConflictRewardsCfg(G1Rewards):
     """Extends G1Rewards with a survival term and two conflicting velocity-tracking objectives."""
 
+    # Yaw tracking disabled — this task cares only about x-speed.
+    track_ang_vel_z_exp: RewTerm | None = None
+
     alive: RewTerm = RewTerm(func=mdp.is_alive, weight=0.25)
 
     # Mirror of the primary tracking rewards but targeting the negated command.
     # Equal weights create a symmetric, genuinely infeasible conflict for GCR-PPO.
     track_lin_vel_xy_conflict_exp: RewTerm = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=1.0,
-        params={"command_name": "conflict_velocity", "std": 0.5},
-    )
-    track_ang_vel_z_conflict_exp: RewTerm = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp,
-        weight=1.0,
+        weight=3.0,
         params={"command_name": "conflict_velocity", "std": 0.5},
     )
 
@@ -115,7 +113,9 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         )
 
         # Tune reward weights
-        self.rewards.track_ang_vel_z_exp.weight = 1.0
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0
+        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
+
         self.rewards.lin_vel_z_l2.weight = -0.2
         self.rewards.action_rate_l2.weight = -0.005
         self.rewards.dof_acc_l2.weight = -1.0e-7
@@ -132,9 +132,9 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         # base_velocity: forward-left (positive x and positive y)
         # conflict_velocity mirrors with y_scale=-1.0: forward-right (same x, negated y)
         # Equal XY magnitude is guaranteed since conflict is a pure y sign-flip.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.2, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # yaw disabled
         self.commands.conflict_velocity.ranges = self.commands.base_velocity.ranges
 
         # -- multi-head critic support --
@@ -145,7 +145,6 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         self.reward_components = len(self.reward_component_names)
         self.reward_component_task_rew = [
             "track_lin_vel_xy_conflict_exp",
-            "track_ang_vel_z_conflict_exp",
             "alive",
         ]
 
