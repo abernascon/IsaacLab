@@ -158,12 +158,12 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         palm_cfg = SceneEntityCfg("robot", body_names="right_palm_link")
         self.rewards.track_hand_lin_vel_xy_exp = RewTerm(
             func=track_palm_lin_vel_xy_yaw_frame_exp,
-            weight=2.0,
+            weight=1.0,
             params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
         self.rewards.track_hand_ang_vel_z_exp = RewTerm(
             func=track_palm_ang_vel_z_world_exp,
-            weight=2.0,
+            weight=1.0,
             params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": palm_cfg},
         )
 
@@ -247,12 +247,16 @@ class G1WaiterEnvCfg(G1FlatEnvCfg):
         # ------------------------------------------------------------------
         # Multi-head critic bookkeeping (GCR-PPO)
         # ------------------------------------------------------------------
+        # BUG: dir() returns alphabetical order, not insertion order.
+        # "alive" sits at alphabetical index 1, but insertion-order column 1
+        # is ang_vel_xy_l2 — GCR-PPO protects the wrong gradient.
+        #
         self.reward_component_names = [
             name for name, val in self.rewards.__dict__.items()
             if isinstance(val, RewTerm)
         ]
         self.reward_components = len(self.reward_component_names)
-        self.reward_component_task_rew = ["alive"]  # for tracking learning curves
+        self.reward_component_task_rew = ["alive", "track_hand_lin_vel_xy_exp", "track_hand_ang_vel_z_exp", "plate_orientation_exp"]  # "plate_orientation_exp" --- IGNORE ---
 
 
 class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
@@ -263,3 +267,9 @@ class G1WaiterEnvCfg_PLAY(G1WaiterEnvCfg):
         self.observations.policy.enable_corruption = False
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+        # Fixed command: 1 m/s pure forward, no lateral, no yaw
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        # Disable standing-env fraction so all envs receive the fixed 1 m/s command
+        self.commands.base_velocity.rel_standing_envs = 0.0

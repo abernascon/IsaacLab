@@ -34,7 +34,7 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
         self.scene.robot.spawn.articulation_props.enabled_self_collisions = True
 
 
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.5)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
@@ -42,7 +42,7 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
         self.commands.target_height = UniformHeightCommandCfg(
             asset_name="robot",
             resampling_time_range=(20.0, 20.0),
-            ranges=UniformHeightCommandCfg.Ranges(height=(0.65, 0.65)),
+            ranges=UniformHeightCommandCfg.Ranges(height=(0.55, 0.55)),
         )
 
         # Add height-tracking reward using RBF kernel 
@@ -52,7 +52,7 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
             params={
                 "command_name": "target_height",
                 "asset_cfg": SceneEntityCfg("robot"),
-                "sigma": 0.5,  
+                "sigma": 0.3,  
             },
         )
         
@@ -69,14 +69,6 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
             params={"minimum_height": 0.3},
         )
         
-        # Penalize foot tilting
-        #self.rewards.flat_feet_orientation = RewTerm(
-        #    func=flat_feet_orientation,
-        #    weight=-2.0,
-        #    params={
-        #        "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-        #    },
-        #)
 
         # -- multi-head critic support --
         self.reward_component_names = [
@@ -84,12 +76,7 @@ class G1LowHeightEnvCfg(G1FlatEnvCfg):
             if isinstance(val, RewTerm)
         ]
         self.reward_components = len(self.reward_component_names)
-        self.reward_component_task_rew = [
-            "track_lin_vel_xy_exp",
-            "track_ang_vel_z_exp",
-            "alive",
-            "track_height_rbf",
-        ]
+        self.reward_component_task_rew = ["track_height_rbf", "alive", "track_lin_vel_xy_exp", "track_ang_vel_z_exp"]
 
 
 class G1LowHeightEnvCfg_PLAY(G1LowHeightEnvCfg):
@@ -100,3 +87,10 @@ class G1LowHeightEnvCfg_PLAY(G1LowHeightEnvCfg):
         self.observations.policy.enable_corruption = False
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+        # Fixed command: 1 m/s pure forward, no lateral, no yaw
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        # Disable standing-env fraction so all envs receive the fixed 1 m/s command
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        # Height command already fixed at 0.55 m in the training config

@@ -132,7 +132,7 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
         # base_velocity: forward-left (positive x and positive y)
         # conflict_velocity mirrors with y_scale=-1.0: forward-right (same x, negated y)
         # Equal XY magnitude is guaranteed since conflict is a pure y sign-flip.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # yaw disabled
         self.commands.conflict_velocity.ranges = self.commands.base_velocity.ranges
@@ -143,10 +143,7 @@ class G1FlatConflictEnvCfg(G1RoughEnvCfg):
             if isinstance(val, RewTerm)
         ]
         self.reward_components = len(self.reward_component_names)
-        self.reward_component_task_rew = [
-            "track_lin_vel_xy_conflict_exp",
-            "alive",
-        ]
+        self.reward_component_task_rew = [["track_lin_vel_xy_conflict_exp"], ["alive"]]
 
 
 class G1FlatConflictEnvCfg_PLAY(G1FlatConflictEnvCfg):
